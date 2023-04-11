@@ -19,14 +19,7 @@ const createMemoContentInstruction = (signerPubKey, recipientPubKey, memoContent
     });
 }
 
-const signAndSerialize = async (connection, keypair, instructions) => {
-    const tx = new Transaction();
-    if (Array.isArray(instructions)) {
-        instructions.forEach(x => tx.add(x));
-    } else {
-        tx.add(instructions);
-    }
-
+const signAndSerialize = async (connection, keypair, tx) => {
     const latestBlockHash = await connection.getLatestBlockhash();
     tx.recentBlockhash = latestBlockHash.blockhash;
     tx.feePayer = keypair.publicKey;
@@ -45,7 +38,7 @@ const createTransferInstruction = (fromPublicKey, toPublicKey, amountInSol) => {
     return ix;
 }
 
-const API_ENDPOINT = 'https://mg583m76c3.execute-api.us-east-1.amazonaws.com/production';
+const API_ENDPOINT = 'https://api.nfraids.xyz';
 const createRequestTx = async (clientPubkey, nftAddress, collectionAddress, seasonId, target, action) => {
     let {data: {Item: data}} = await axios.get(`${API_ENDPOINT}/state/${seasonId}`);
     data = unmarshall(data || {});
@@ -66,10 +59,15 @@ const createRequestTx = async (clientPubkey, nftAddress, collectionAddress, seas
     return tx;
 }
 
+const sendTxForExecution = async (serializedTx) => {
+    const {data: result} = await axios.post(`${API_ENDPOINT}/play`, {
+        serializedTx
+    });
+    return result;
+}
+
 module.exports = {
-    createMemoContentInstruction,
+    createRequestTx,
     signAndSerialize,
-    memoProgramId,
-    createTransferInstruction,
-    createRequestTx
+    sendTxForExecution
 }

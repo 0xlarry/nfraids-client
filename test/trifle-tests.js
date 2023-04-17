@@ -48,9 +48,8 @@ describe('TRIFLE OPERATIONS TEST', () => {
         tx.feePayer = kp.publicKey;
         tx.partialSign(kp);
         const serialized = tx.serialize({requireAllSignatures: false, verifySignatures: false});
-        const {status} = await sendTxForExecution(serialized, 'trifle');
-        // const {status} = await executeOnBackend(connection, serialized);
-        expect(status).eql(200);
+        const result = await sendTxForExecution(serialized, 'trifle');
+        expect(result.status).eql(200, JSON.stringify(result));
 
         ([trifleAddress] = fusion.findTriflePda(nft.address, trifleAuthority));
         escrowTokens = await fusion.getTrifleTokens(connection, trifleAddress);
@@ -77,7 +76,7 @@ describe('TRIFLE OPERATIONS TEST', () => {
     });
 });
 
-const executeOnBackend = async (connection, serializedTx) => {
+const simulateBackendSignature = async (connection, serializedTx) => {
     const tx = Transaction.from(serializedTx); // remember to add .data back
     if (tx.instructions.length !== 1 || tx.instructions[0].programId.toString() !== 'trifMWutwBxkSuatmpPVnEe7NoE3BJKgjVi8sSyoXWX') {
         return {

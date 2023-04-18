@@ -1,12 +1,11 @@
 const { expect } = require("chai");
 const { describe } = require("mocha");
 const fs = require("fs");
-const {Keypair, Connection, clusterApiUrl, LAMPORTS_PER_SOL, PublicKey, Transaction, sendAndConfirmTransaction, sendAndConfirmRawTransaction} = require('@solana/web3.js');
-const {Metaplex, keypairIdentity, assertNftWithToken} = require("@metaplex-foundation/js");
-const {EscrowConstraintModel} = require('@metaplex-foundation/mpl-trifle');
+const {Keypair, Connection, clusterApiUrl, PublicKey, Transaction, sendAndConfirmTransaction } = require('@solana/web3.js');
+const {Metaplex, keypairIdentity} = require("@metaplex-foundation/js");
 const {fusion} = require('../index.js')
 const bs58 = require('bs58');
-const { trifleTransfer } = require("../lib/trifle.js");
+const { trifleTransfer, calcAttackBuff, showModel } = require("../lib/trifle.js");
 const { sendTxForExecution } = require("../lib/requestBuilder.js");
 
 let key = bs58.decode(String(process.env.NFRAID_KEY));
@@ -20,25 +19,26 @@ describe('TRIFLE OPERATIONS TEST', () => {
     const testTrifleAddress = new PublicKey('FAbArSiT6fJXQipEztDqyzdYQxj2h5XRdWGrCta8h6e9');
     const trifleAuthority = new PublicKey('AEb8XJLe3ChELQC7nN3gB4QB1CBM3diHkYkQe8kc9w8y');
     const aiWeaponSft = new PublicKey('FAZGsPjMXskehuQTuy6Y9phtYq91sZbq2FiBG4DnnuLF');
+    const shieldSft = new PublicKey('2d8hLAfecL5b7GzqEZtCfQrRX5Q4BtV2NzwDuyMwufpG');
     let trifleAddress, escrowAddress;
     before("set up", async () => {
         // connect
         metaplex = new Metaplex(connection);
         metaplex.use(keypairIdentity(kp));
-        console.log('-- kp: ', kp.publicKey.toString());
+        console.log('-- kp pubkey: ', kp.publicKey.toString());
 
         // create NFT
         ({nft} = await metaplex.nfts().create({
             uri: 'uri.xyz',
             name: 'name', 
         }, {commitment: 'confirmed'}));
+        // nft = {address: new PublicKey('3FNf9TN6xwPhuvWbScX96H5yf9LBHLcMwHB8JNuHygzV')};
         console.log('-- nft address: ', nft.address.toString());
-
-        // mint sft
-        sft = await mintSft(aiWeaponSft, kp.publicKey);
 
         ([trifleAddress] = fusion.findTriflePda(nft.address, trifleAuthority));
         ([escrowAddress] = fusion.findEscrowPda(nft.address, trifleAddress));
+
+        // await showModel(connection, testTrifleAddress, true);
     });
 
     it('should create trifle account for NFT', async () => {
@@ -65,15 +65,31 @@ describe('TRIFLE OPERATIONS TEST', () => {
         expect(escrowTokens.attack[0].mint).eql(aiWeaponSft);
     });
 
-    it.skip('should transfer out SFT', async () => {
-        const tx = await trifleTransfer(connection, metaplex, kp.publicKey, nft.address, escrowAddress, aiWeaponSft, trifleAuthority, 'attack', 'out');
+    it('should calculate attack buff', async () => {
+        const ab = await calcAttackBuff(connection, 's1', nft.address);
+        expect(ab).to.eql(10);
+    });
+
+    it('should transfer out SFT', async () => {
+        const tx = await trifleTransfer(connection, metaplex, kp.publicKey, nft.address, escrowAddress, shieldSft, trifleAuthority, 'haste', 'out');
         await simulateWalletSignExecute(tx, kp);
-        escrowTokens = await fusion.getTrifleTokens(connection, trifleAddress);
-        console.log(escrowTokens);
 
         escrowTokens = await fusion.getTrifleTokens(connection, trifleAddress);
-        expect(escrowTokens).eql({});
+        expect(escrowTokens).to.not.have.property('attack');
     });
+
+    it('should burn token into escrow', async () => {
+        escrowTokens = await fusion.getTrifleTokens(connection, trifleAddress);
+        const {nft: n2} = await metaplex.nfts().create({
+            uri: 'uri.xyz',
+            name: 'name', 
+        }, {commitment: 'finalized'});
+        console.log('-- nft to burn address: ', nft.address.toString());
+        const tx = await trifleTransfer(connection, metaplex, kp.publicKey, nft.address, escrowAddress, n2.address, trifleAuthority, 'burn', 'in');
+        await simulateWalletSignExecute(tx, kp);
+        const newTokens = await fusion.getTrifleTokens(connection, trifleAddress);
+        expect(escrowTokens.burn?.length || 0).eql(newTokens.burn.length - 1, JSON.stringify(newTokens));
+    })
 });
 
 const simulateBackendSignature = async (connection, serializedTx) => {
@@ -121,7 +137,7 @@ const mintSft = async (sft, toOwner) => {
 
 const simulateWalletSignExecute = async (tx, keypair) => {
     try {
-        const sig = await sendAndConfirmTransaction(connection, tx, [keypair], {commitment: 'confirmed', skipPreflight: true,});
+        const sig = await sendAndConfirmTransaction(connection, tx, [keypair], {commitment: 'confirmed', skipPreflight: true});
         await connection.confirmTransaction(sig, 'finalized');
         return sig;
     } catch (e) {

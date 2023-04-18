@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { describe } = require("mocha");
-const {fetchGameState, fetchCoolDown} = require('../lib/db.js');
+const {fetchGameState, fetchCdBuffs} = require('../lib/gameState.js');
 
 
 describe('DB TESTS', () => {
@@ -16,10 +16,12 @@ describe('DB TESTS', () => {
         expect(state).to.have.property('id');
     });
 
-    it('should get cooldown', async () => {
-        const result = await fetchCoolDown('s1', '8he9T1UG2vuceUbJ12WRZa8uF8DNRoRmsippwYWrNukC');
+    it('should get buffs and cooldowns', async () => {
+        const result = await fetchCdBuffs('s1', '8he9T1UG2vuceUbJ12WRZa8uF8DNRoRmsippwYWrNukC');
         expect(result.status).eql(200);
         expect(result.cooldowns).to.have.property('loot');
         expect(result.cooldowns).to.have.property('boss');
+        expect(result.buffs).to.have.property('attack');
+        expect(result.buffs).to.have.property('haste');
     });
 });
